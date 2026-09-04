@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#1e1f22]">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Discord Web</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: '#5865F2',
+            brandHover: '#4752C4',
+            brandGreen: '#23A55A',
+            brandRed: '#F23F43',
+            dark1: '#1e1f22', // Sidebar server list
+            dark2: '#2b2d31', // Channel sidebar
+            dark3: '#313338', // Main chat area
+            dark4: '#383a40', // Hover / inputs
+            textMuted: '#949ba4',
+            textNormal: '#dbdee1'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Discord-styled Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #2b2d31; }
+    ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #111214; }
+    .server-pill::before {
+      content: '';
+      position: absolute;
+      left: -12px;
+      width: 8px;
+      height: 8px;
+      background: white;
+      border-radius: 0 4px 4px 0;
+      transition: all 0.2s ease;
+      opacity: 0;
+      transform: scaleY(0);
+    }
+    .server-btn:hover .server-pill::before {
+      opacity: 1;
+      transform: scaleY(2.5);
+    }
+    .server-btn.active .server-pill::before {
+      opacity: 1;
+      transform: scaleY(5);
+    }
+  </style>
+</head>
+<body class="h-full font-sans text-textNormal select-none overflow-hidden bg-dark1">
+
+  <!-- ================= AUTH MODAL (LOGIN / REGISTER) ================= -->
+  <div id="authScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div class="bg-dark3 p-8 rounded-lg shadow-2xl w-full max-w-md border border-dark4">
+      <div class="flex justify-center mb-4">
+        <div class="w-14 h-14 rounded-full bg-brand flex items-center justify-center text-white text-3xl shadow-lg">
+          <i class="fa-brands fa-discord"></i>
+        </div>
+      </div>
+      
+      <h2 id="authTitle" class="text-2xl font-bold text-center text-white mb-2">Welcome Back!</h2>
+      <p id="authSubtitle" class="text-center text-textMuted text-sm mb-6">We're so excited to see you again!</p>
+
+      <form id="authForm" onsubmit="handleAuth(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold uppercase text-textMuted mb-2">Display Name</label>
+          <input id="authDisplayName" type="text" required placeholder="Display Name" class="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-transparent" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase text-textMuted mb-2">Username</label>
+          <input id="authUsername" type="text" required placeholder="username (no spaces)" class="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-transparent" />
+        </div>
+
+        <div id="passwordWrapper">
+          <label class="block text-xs font-bold uppercase text-textMuted mb-2">Password</label>
+          <input id="authPassword" type="password" required placeholder="••••••••" class="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-transparent" />
+        </div>
+
+        <button type="submit" id="authSubmitBtn" class="w-full bg-brand hover:bg-brandHover text-white font-medium py-2.5 rounded transition duration-150">Log In</button>
+      </form>
+
+      <div class="mt-4 text-xs text-textMuted flex justify-between items-center">
+        <span id="authToggleHint">Need an account?</span>
+        <button type="button" onclick="toggleAuthMode()" id="authToggleBtn" class="text-brand hover:underline font-semibold">Register</button>
+      </div>
+
+      <!-- Quick Demo Users for fast testing -->
+      <div class="mt-6 pt-4 border-t border-dark4">
+        <p class="text-xs text-textMuted text-center mb-2 font-medium">Quick switch / Test presets:</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="quickLogin('Alex', 'alex', '#5865F2')" class="bg-dark2 hover:bg-dark4 text-xs py-1.5 px-3 rounded text-white border border-dark4 flex items-center justify-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-brand"></span> Alex
+          </button>
+          <button onclick="quickLogin('Sam', 'sam', '#23A55A')" class="bg-dark2 hover:bg-dark4 text-xs py-1.5 px-3 rounded text-white border border-dark4 flex items-center justify-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-brandGreen"></span> Sam
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MAIN APPLICATION LAYOUT ================= -->
+  <div id="app" class="h-full flex flex-row w-full">
+
+    <!-- 1. SERVERS RAIL (LEFT-MOST) -->
+    <div class="w-[72px] bg-dark1 flex flex-col items-center py-3 gap-2 shrink-0 z-20">
+      <!-- Home / DM Button -->
+      <div class="relative flex items-center justify-center w-full server-btn active" id="server-btn-home" onclick="selectServer('home')">
+        <div class="server-pill"></div>
+        <div class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-dark3 hover:bg-brand text-white flex items-center justify-center text-xl transition-all duration-200 cursor-pointer shadow">
+          <i class="fa-brands fa-discord"></i>
+        </div>
+      </div>
+
+      <div class="w-8 h-[2px] bg-dark4 rounded my-1"></div>
+
+      <!-- Server List Container -->
+      <div id="serverListContainer" class="flex flex-col items-center gap-2 w-full flex-1 overflow-y-auto overflow-x-hidden">
+        <!-- Servers rendered via JS -->
+      </div>
+
+      <!-- Add Server Button -->
+      <div class="relative flex items-center justify-center w-full">
+        <button onclick="openModal('createServerModal')" title="Add a Server" class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-dark3 hover:bg-brandGreen text-brandGreen hover:text-white flex items-center justify-center text-lg transition-all duration-200 group">
+          <i class="fa-solid fa-plus transition group-hover:scale-110"></i>
+        </button>
+      </div>
+
+      <!-- Join Server with Invite Code -->
+      <div class="relative flex items-center justify-center w-full mt-1">
+        <button onclick="openModal('joinServerModal')" title="Join with Invite" class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-dark3 hover:bg-brand text-textMuted hover:text-white flex items-center justify-center text-md transition-all duration-200 group">
+          <i class="fa-solid fa-compass"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. SUB-SIDEBAR (CHANNELS or FRIENDS LIST) -->
+    <div class="w-60 bg-dark2 flex flex-col shrink-0">
+      
+      <!-- Sub-Sidebar Header -->
+      <div id="sidebarHeader" class="h-12 border-b border-dark1 flex items-center justify-between px-4 font-semibold text-white shadow-sm cursor-pointer hover:bg-dark4/40 transition">
+        <span id="sidebarTitle" class="truncate">Discord</span>
+        <div id="serverHeaderActions" class="hidden">
+          <i class="fa-solid fa-chevron-down text-xs text-textMuted"></i>
+        </div>
+      </div>
+
+      <!-- Sidebar Content Body -->
+      <div class="flex-1 overflow-y-auto px-2 py-3 space-y-3" id="sidebarBody">
+        <!-- Rendered dynamically (Channels or DM Navigation) -->
+      </div>
+
+      <!-- User Status Footer -->
+      <div class="h-14 bg-[#111214]/60 px-2 flex items-center justify-between">
+        <div class="flex items-center gap-2 overflow-hidden cursor-pointer hover:bg-dark4/60 p-1.5 rounded transition">
+          <div class="relative">
+            <div id="currentUserAvatar" class="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">U</div>
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-brandGreen border-2 border-dark1"></span>
+          </div>
+          <div class="truncate">
+            <div id="currentUserName" class="text-xs font-semibold text-white truncate">User</div>
+            <div id="currentUserTag" class="text-[10px] text-textMuted truncate">#0000</div>
+          </div>
+        </div>
+        <div class="flex items-center text-textMuted gap-1 text-sm">
+          <button onclick="toggleAudio()" id="muteBtn" class="w-7 h-7 hover:bg-dark4 rounded flex items-center justify-center hover:text-white" title="Mute/Unmute Audio"><i class="fa-solid fa-microphone"></i></button>
+          <button onclick="logout()" class="w-7 h-7 hover:bg-dark4 rounded flex items-center justify-center hover:text-brandRed" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. MAIN CONTENT (CHAT or FRIENDS DASHBOARD) -->
+    <div class="flex-1 bg-dark3 flex flex-col min-w-0">
+      
+      <!-- Top Chat / Tab Header -->
+      <div class="h-12 border-b border-dark1 px-4 flex items-center justify-between bg-dark3 shadow-sm shrink-0">
+        <div class="flex items-center gap-2 overflow-hidden" id="mainHeaderLeft">
+          <i class="fa-solid fa-hashtag text-textMuted text-lg" id="headerIcon"></i>
+          <span class="font-bold text-white text-sm" id="headerTitle">general</span>
+          <span class="text-xs text-textMuted truncate hidden md:inline ml-2 border-l border-dark4 pl-3" id="headerDesc">The start of something great.</span>
+        </div>
+
+        <!-- Header Controls -->
+        <div class="flex items-center gap-3 text-textMuted text-sm" id="headerRightActions">
+          <button onclick="copyInviteLink()" id="inviteBtn" class="hidden bg-brand hover:bg-brandHover text-white text-xs px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
+            <i class="fa-solid fa-user-plus"></i> <span class="hidden sm:inline">Invite</span>
+          </button>
+          <button onclick="toggleMemberList()" class="hover:text-white" title="Toggle Member List">
+            <i class="fa-solid fa-users"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Workspace Body (Messages Area or Friends Dashboard) -->
+      <div class="flex-1 flex min-h-0 overflow-hidden relative">
+        
+        <!-- Chat Area (Visible when in server channel or DM) -->
+        <div id="chatView" class="flex-1 flex flex-col min-w-0 bg-dark3">
+          <!-- Messages Scroll View -->
+          <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+            <!-- Messages rendered via JS -->
+          </div>
+
+          <!-- Message Input Bar -->
+          <div class="p-4 pt-0">
+            <form id="messageForm" onsubmit="sendMessage(event)" class="bg-dark4 rounded-lg flex items-center px-4 py-2.5 gap-3">
+              <button type="button" onclick="simulateAttachment()" class="text-textMuted hover:text-white transition">
+                <i class="fa-solid fa-circle-plus text-lg"></i>
+              </button>
+              <input id="messageInput" type="text" autocomplete="off" placeholder="Message #general..." class="bg-transparent text-sm text-textNormal placeholder-textMuted focus:outline-none flex-1" />
+              <button type="button" onclick="insertEmoji('🎉')" class="text-textMuted hover:text-yellow-400 transition text-lg">
+                <i class="fa-regular fa-face-smile"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Friends Dashboard View (Visible when Home -> Friends is clicked) -->
+        <div id="friendsView" class="hidden flex-1 flex flex-col bg-dark3 overflow-y-auto p-6">
+          <div class="flex items-center gap-4 border-b border-dark4 pb-4 mb-4">
+            <div class="flex items-center gap-2 text-white font-semibold">
+              <i class="fa-solid fa-user-group text-textMuted"></i> Friends
+            </div>
+            <div class="flex gap-2 text-sm">
+              <button onclick="setFriendsTab('online')" id="ftab-online" class="px-2 py-1 rounded text-white bg-dark4 font-medium">Online</button>
+              <button onclick="setFriendsTab('all')" id="ftab-all" class="px-2 py-1 rounded text-textMuted hover:bg-dark4 font-medium">All</button>
+              <button onclick="setFriendsTab('pending')" id="ftab-pending" class="px-2 py-1 rounded text-textMuted hover:bg-dark4 font-medium">Pending</button>
+              <button onclick="setFriendsTab('add')" id="ftab-add" class="px-2 py-1 rounded text-brandGreen hover:bg-brandGreen/20 font-bold">Add Friend</button>
+            </div>
+          </div>
+
+          <!-- Friends Tab Content -->
+          <div id="friendsContent" class="flex-1">
+            <!-- Dynamic Friends List / Add Friend Box -->
+          </div>
+        </div>
+
+        <!-- 4. RIGHT MEMBER LIST (Toggleable) -->
+        <div id="memberSidebar" class="w-60 bg-dark2 shrink-0 border-l border-dark1 p-3 overflow-y-auto hidden lg:block">
+          <div class="text-[11px] font-bold text-textMuted uppercase tracking-wider mb-2" id="memberCount">MEMBERS — 0</div>
+          <div id="memberList" class="space-y-1">
+            <!-- Members rendered via JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- Create Server Modal -->
+  <div id="createServerModal" class="fixed inset-0 z-50 bg-black/70 hidden items-center justify-center backdrop-blur-sm p-4">
+    <div class="bg-dark3 rounded-lg max-w-md w-full p-6 border border-dark4 shadow-2xl relative">
+      <h3 class="text-xl font-bold text-white text-center mb-1">Create Your Server</h3>
+      <p class="text-xs text-textMuted text-center mb-5">Your server is where you and your friends hang out. Make yours and start talking.</p>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-textMuted uppercase mb-1">Server Name</label>
+          <input id="newServerName" type="text" placeholder="Alex's cool server" class="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-dark4" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-textMuted uppercase mb-1">Server Color Accent</label>
+          <div class="flex gap-2" id="colorPicker">
+            <button type="button" onclick="selectServerColor('#5865F2')" class="w-8 h-8 rounded-full bg-[#5865F2] ring-2 ring-white"></button>
+            <button type="button" onclick="selectServerColor('#23A55A')" class="w-8 h-8 rounded-full bg-[#23A55A]"></button>
+            <button type="button" onclick="selectServerColor('#F23F43')" class="w-8 h-8 rounded-full bg-[#F23F43]"></button>
+            <button type="button" onclick="selectServerColor('#FEE75C')" class="w-8 h-8 rounded-full bg-[#FEE75C]"></button>
+            <button type="button" onclick="selectServerColor('#EB459E')" class="w-8 h-8 rounded-full bg-[#EB459E]"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-between items-center bg-[#2b2d31] -mx-6 -mb-6 p-4 rounded-b-lg">
+        <button onclick="closeModal('createServerModal')" class="text-xs text-white hover:underline">Cancel</button>
+        <button onclick="createServerSubmit()" class="bg-brand hover:bg-brandHover text-white px-5 py-2 rounded text-sm font-medium transition">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Server Modal -->
+  <div id="joinServerModal" class="fixed inset-0 z-50 bg-black/70 hidden items-center justify-center backdrop-blur-sm p-4">
+    <div class="bg-dark3 rounded-lg max-w-md w-full p-6 border border-dark4 shadow-2xl">
+      <h3 class="text-xl font-bold text-white text-center mb-1">Join a Server</h3>
+      <p class="text-xs text-textMuted text-center mb-5">Enter an invitation code or link below to join an existing server.</p>
+      
+      <div>
+        <label class="block text-xs font-bold text-textMuted uppercase mb-1">Invite Code</label>
+        <input id="inviteCodeInput" type="text" placeholder="e.g. g7x2k9" class="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-dark4" />
+      </div>
+
+      <div class="mt-6 flex justify-between items-center bg-[#2b2d31] -mx-6 -mb-6 p-4 rounded-b-lg">
+        <button onclick="closeModal('joinServerModal')" class="text-xs text-white hover:underline">Cancel</button>
+        <button onclick="joinServerWithCode()" class="bg-brand hover:bg-brandHover text-white px-5 py-2 rounded text-sm font-medium transition">Join Server</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Channel Modal -->
+  <div id="createChannelModal" class="fixed inset-0 z-50 bg-black/70 hidden items-center justify-center backdrop-blur-sm p-4">
+    <div class="bg-dark3 rounded-lg max-w-md w-full p-6 border border-dark4 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-3">Create Text Channel</h3>
+      <div>
+        <label class="block text-xs font-bold text-textMuted uppercase mb-1">Channel Name</label>
+        <div class="relative flex items-center">
+          <span class="absolute left-3 text-textMuted text-sm font-bold">#</span>
+          <input id="newChannelName" type="text" placeholder="new-channel" class="w-full bg-[#1e1f22] text-white pl-8 p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-brand border border-dark4" />
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end gap-3">
+        <button onclick="closeModal('createChannelModal')" class="text-xs text-white hover:underline">Cancel</button>
+        <button onclick="createChannelSubmit()" class="bg-brand hover:bg-brandHover text-white px-4 py-2 rounded text-sm font-medium transition">Create Channel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-brand text-white text-xs px-4 py-3 rounded shadow-lg transform translate-y-20 opacity-0 transition duration-300 pointer-events-none flex items-center gap-2">
+    <i class="fa-solid fa-circle-check"></i>
+    <span id="toastMsg">Success</span>
+  </div>
+
+  <!-- ================= LOGIC & REALTIME ENGINE ================= -->
+  <script>
+    /* ================= Web Audio Chime Generator ================= */
+    let audioEnabled = true;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playChime(type = 'message') {
+      if (!audioEnabled || audioCtx.state === 'suspended') return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'message') {
+          osc.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
+          osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15);
+          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.3);
+        } else if (type === 'join') {
+          osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.2);
+          gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.35);
+        }
+      } catch (e) {
+        console.log("Audio not allowed yet");
+      }
+    }
+
+    function toggleAudio() {
+      audioEnabled = !audioEnabled;
+      document.getElementById('muteBtn').innerHTML = audioEnabled 
+        ? '<i class="fa-solid fa-microphone"></i>' 
+        : '<i class="fa-solid fa-microphone-slash text-brandRed"></i>';
+      showToast(audioEnabled ? "Sound enabled" : "Sound muted");
+    }
+
+    /* ================= STATE & MULTI-TAB BROADCAST ================= */
+    const channelBroadcast = new BroadcastChannel('discord_clone_stream');
+
+    const STORAGE_KEY = 'discord_clone_data_v1';
+    let appData = {
+      users: {},          // username -> { displayName, tag, avatarColor, friends: [], pendingRequests: [] }
+      servers: {},        // serverId -> { id, name, owner, color, inviteCode, channels: [], members: [] }
+      messages: {}        // key (channelId or dmKey) -> array of messages
+    };
+
+    let currentUser = null;
+    let currentServerId = 'home'; // 'home' or serverId
+    let currentChannelId = 'friends'; // channelId or 'friends' or dmUserId
+    let currentFriendTab = 'online';
+    let selectedColor = '#5865F2';
+    let isRegisterMode = false;
+
+    // Default Seed Data
+    function initializeStorage() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          appData = JSON.parse(saved);
+        } catch (e) {
+          console.error("Storage reset due to parse error", e);
+        }
+      }
+
+      // Ensure Global Server exists
+      if (!appData.servers['global']) {
+        appData.servers['global'] = {
+          id: 'global',
+          name: 'Global Hub',
+          owner: 'system',
+          color: '#5865F2',
+          inviteCode: 'GLOBAL',
+          channels: ['welcome', 'general', 'bot-commands'],
+          members: []
+        };
+        appData.messages['global_welcome'] = [
+          { id: '1', user: 'System Bot', tag: '#0000', color: '#5865F2', text: 'Welcome to Discord Clone! Create servers, invite friends, and chat across browser tabs in real time! 🚀', time: '10:00 AM' }
+        ];
+        appData.messages['global_general'] = [
+          { id: '2', user: 'System Bot', tag: '#0000', color: '#5865F2', text: 'This is the global hangout spot. Open another tab to test live messages!', time: '10:01 AM' }
+        ];
+      }
+      saveToStorage();
+    }
+
+    function saveToStorage() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+    }
+
+    /* Broadcast Receiver for Realtime Multi-Tab */
+    channelBroadcast.onmessage = (event) => {
+      const { type, payload } = event.data;
+      // Reload local copy
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) appData = JSON.parse(saved);
+
+      if (type === 'NEW_MESSAGE') {
+        if (payload.channelKey === getActiveChatKey()) {
+          renderMessages();
+          playChime('message');
+        }
+      } else if (type === 'SERVER_UPDATE') {
+        renderServers();
+        if (currentServerId === payload.serverId) {
+          renderChannels();
+          renderMembers();
+        }
+      } else if (type === 'FRIEND_UPDATE') {
+        if (currentServerId === 'home') {
+          renderFriendsDashboard();
+          renderDMList();
+        }
+      }
+    };
+
+    function broadcast(type, payload = {}) {
+      channelBroadcast.postMessage({ type, payload });
+    }
+
+    /* ================= AUTHENTICATION ================= */
+    function toggleAuthMode() {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById('authTitle').innerText = isRegisterMode ? 'Create an Account' : 'Welcome Back!';
+      document.getElementById('authSubtitle').innerText = isRegisterMode ? 'Come join the community!' : "We're so excited to see you again!";
+      document.getElementById('authSubmitBtn').innerText = isRegisterMode ? 'Continue' : 'Log In';
+      document.getElementById('authToggleHint').innerText = isRegisterMode ? 'Already have an account?' : 'Need an account?';
+      document.getElementById('authToggleBtn').innerText = isRegisterMode ? 'Log In' : 'Register';
+    }
+
+    function handleAuth(e) {
+      e.preventDefault();
+      const displayName = document.getElementById('authDisplayName').value.trim();
+      const username = document.getElementById('authUsername').value.trim().toLowerCase().replace(/\s+/g, '');
+      const colors = ['#5865F2', '#23A55A', '#F23F43', '#EB459E', '#FEE75C', '#1ABC9C'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+      if (!appData.users[username]) {
+        // Auto-register if not existing or in register mode
+        const tag = '#' + Math.floor(1000 + Math.random() * 9000);
+        appData.users[username] = {
+          displayName: displayName || username,
+          username,
+          tag,
+          avatarColor: randomColor,
+          friends: [],
+          pendingRequests: []
+        };
+      } else {
+        appData.users[username].displayName = displayName || appData.users[username].displayName;
+      }
+
+      loginUser(username);
+    }
+
+    function quickLogin(name, user, color) {
+      if (!appData.users[user]) {
+        appData.users[user] = {
+          displayName: name,
+          username: user,
+          tag: user === 'alex' ? '#1337' : '#2024',
+          avatarColor: color,
+          friends: [],
+          pendingRequests: []
+        };
+      }
+      loginUser(user);
+    }
+
+    function loginUser(username) {
+      currentUser = appData.users[username];
+      
+      // Auto join global server
+      if (!appData.servers['global'].members.includes(username)) {
+        appData.servers['global'].members.push(username);
+      }
+      saveToStorage();
+      broadcast('SERVER_UPDATE', { serverId: 'global' });
+
+      // Update current user UI
+      document.getElementById('currentUserName').innerText = currentUser.displayName;
+      document.getElementById('currentUserTag').innerText = currentUser.tag;
+      const avatarEl = document.getElementById('currentUserAvatar');
+      avatarEl.innerText = currentUser.displayName.charAt(0).toUpperCase();
+      avatarEl.style.backgroundColor = currentUser.avatarColor;
+
+      // Hide auth modal
+      document.getElementById('authScreen').classList.add('hidden');
+      
+      // Unlock AudioContext after interaction
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      selectServer('global');
+      showToast(`Logged in as ${currentUser.displayName}`);
+    }
+
+    function logout() {
+      currentUser = null;
+      document.getElementById('authScreen').classList.remove('hidden');
+    }
+
+    /* ================= SERVER MANAGEMENT ================= */
+    function renderServers() {
+      const container = document.getElementById('serverListContainer');
+      container.innerHTML = '';
+
+      Object.values(appData.servers).forEach(server => {
+        // Only show if user is member
+        if (!currentUser || !server.members.includes(currentUser.username)) return;
+
+        const isCurrent = currentServerId === server.id;
+        const initial = server.name.charAt(0).toUpperCase();
+
+        const btnWrapper = document.createElement('div');
+        btnWrapper.className = `relative flex items-center justify-center w-full server-btn ${isCurrent ? 'active' : ''}`;
+        btnWrapper.innerHTML = `
+          <div class="server-pill"></div>
+          <div title="${server.name}" onclick="selectServer('${server.id}')"
+               style="background-color: ${isCurrent ? server.color : '#313338'}"
+               class="w-12 h-12 rounded-[24px] hover:rounded-[16px] text-white flex items-center justify-center font-bold text-base transition-all duration-200 cursor-pointer shadow hover:brightness-110">
+            ${initial}
+          </div>
+        `;
+        container.appendChild(btnWrapper);
+      });
+    }
+
+    function selectServer(serverId) {
+      currentServerId = serverId;
+      document.querySelectorAll('.server-btn').forEach(el => el.classList.remove('active'));
+      
+      if (serverId === 'home') {
+        document.getElementById('server-btn-home').classList.add('active');
+        document.getElementById('sidebarTitle').innerText = "Direct Messages";
+        document.getElementById('inviteBtn').classList.add('hidden');
+        renderDMList();
+        openFriendsDashboard();
+      } else {
+        const server = appData.servers[serverId];
+        document.getElementById('sidebarTitle').innerText = server.name;
+        document.getElementById('inviteBtn').classList.remove('hidden');
+        
+        // Select first channel
+        currentChannelId = server.channels[0] || 'general';
+        renderChannels();
+        openChannelChat(currentChannelId);
+      }
+      renderServers();
+      renderMembers();
+    }
+
+    function renderChannels() {
+      const server = appData.servers[currentServerId];
+      if (!server) return;
+      const body = document.getElementById('sidebarBody');
+      body.innerHTML = `
+        <div class="flex items-center justify-between text-xs font-bold text-textMuted uppercase px-2 mb-1">
+          <span>Text Channels</span>
+          <button onclick="openModal('createChannelModal')" class="hover:text-white" title="Create Channel"><i class="fa-solid fa-plus"></i></button>
+        </div>
+      `;
+
+      server.channels.forEach(chan => {
+        const isActive = currentChannelId === chan;
+        const btn = document.createElement('button');
+        btn.onclick = () => openChannelChat(chan);
+        btn.className = `w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm font-medium transition ${isActive ? 'bg-dark4 text-white' : 'text-textMuted hover:bg-dark4/50 hover:text-textNormal'}`;
+        btn.innerHTML = `<i class="fa-solid fa-hashtag text-textMuted"></i> <span class="truncate">${chan}</span>`;
+        body.appendChild(btn);
+      });
+    }
+
+    function openChannelChat(chanName) {
+      currentChannelId = chanName;
+      document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('friendsView').classList.add('hidden');
+      
+      document.getElementById('headerIcon').className = "fa-solid fa-hashtag text-textMuted text-lg";
+      document.getElementById('headerTitle').innerText = chanName;
+      document.getElementById('headerDesc').innerText = `Welcome to the #${chanName} channel!`;
+      document.getElementById('messageInput').placeholder = `Message #${chanName}...`;
+
+      renderChannels();
+      renderMessages();
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId).classList.remove('hidden');
+      document.getElementById(modalId).classList.add('flex');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.add('hidden');
+      document.getElementById(modalId).classList.remove('flex');
+    }
+
+    function selectServerColor(c) {
+      selectedColor = c;
+      const btns = document.querySelectorAll('#colorPicker button');
+      btns.forEach(b => b.classList.remove('ring-2', 'ring-white'));
+      event.target.classList.add('ring-2', 'ring-white');
+    }
+
+    function createServerSubmit() {
+      const nameInput = document.getElementById('newServerName');
+      const name = nameInput.value.trim();
+      if (!name) return;
+
+      const id = 'srv_' + Date.now();
+      const invite = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      appData.servers[id] = {
+        id,
+        name,
+        owner: currentUser.username,
+        color: selectedColor,
+        inviteCode: invite,
+        channels: ['general', 'lounge'],
+        members: [currentUser.username]
+      };
+
+      appData.messages[`${id}_general`] = [
+        { id: '1', user: 'System Bot', tag: '#0000', color: '#5865F2', text: `Welcome to ${name}! Use invite code: ${invite} to bring friends in!`, time: 'Now' }
+      ];
+
+      saveToStorage();
+      broadcast('SERVER_UPDATE', { serverId: id });
+
+      nameInput.value = '';
+      closeModal('createServerModal');
+      selectServer(id);
+      showToast(`Server "${name}" created!`);
+      playChime('join');
+    }
+
+    function createChannelSubmit() {
+      const chanInput = document.getElementById('newChannelName');
+      let name = chanInput.value.trim().toLowerCase().replace(/\s+/g, '-');
+      if (!name) return;
+
+      const server = appData.servers[currentServerId];
+      if (server && !server.channels.includes(name)) {
+        server.channels.push(name);
+        saveToStorage();
+        broadcast('SERVER_UPDATE', { serverId: currentServerId });
+        chanInput.value = '';
+        closeModal('createChannelModal');
+        openChannelChat(name);
+      }
+    }
+
+    function copyInviteLink() {
+      const server = appData.servers[currentServerId];
+      if (!server) return;
+      navigator.clipboard.writeText(server.inviteCode);
+      showToast(`Invite code copied: ${server.inviteCode}`);
+    }
+
+    function joinServerWithCode() {
+      const code = document.getElementById('inviteCodeInput').value.trim().toUpperCase();
+      if (!code) return;
+
+      const found = Object.values(appData.servers).find(s => s.inviteCode.toUpperCase() === code);
+      if (!found) {
+        alert("Invalid invite code!");
+        return;
+      }
+
+      if (!found.members.includes(currentUser.username)) {
+        found.members.push(currentUser.username);
+        saveToStorage();
+        broadcast('SERVER_UPDATE', { serverId: found.id });
+        playChime('join');
+      }
+
+      closeModal('joinServerModal');
+      document.getElementById('inviteCodeInput').value = '';
+      selectServer(found.id);
+      showToast(`Joined ${found.name}!`);
+    }
+
+    /* ================= CHAT & MESSAGING ================= */
+    function getActiveChatKey() {
+      if (currentServerId === 'home') {
+        // Direct message key: sorted usernames to ensure identical thread
+        return [currentUser.username, currentChannelId].sort().join('_dm_');
+      }
+      return `${currentServerId}_${currentChannelId}`;
+    }
+
+    function renderMessages() {
+      const container = document.getElementById('messagesContainer');
+      container.innerHTML = '';
+      const chatKey = getActiveChatKey();
+      const messages = appData.messages[chatKey] || [];
+
+      if (messages.length === 0) {
+        container.innerHTML = `
+          <div class="flex flex-col items-center justify-center h-full text-center text-textMuted py-10">
+            <div class="w-16 h-16 rounded-full bg-dark4 flex items-center justify-center text-3xl text-white mb-3">
+              <i class="fa-regular fa-comments"></i>
+            </div>
+            <h3 class="text-white font-bold text-lg">No messages here yet</h3>
+            <p class="text-xs">Be the first to say hello!</p>
+          </div>
+        `;
+        return;
+      }
+
+      messages.forEach(msg => {
+        const msgEl = document.createElement('div');
+        msgEl.className = "flex gap-3 hover:bg-[#2e3035] -mx-4 px-4 py-1.5 rounded transition group";
+        msgEl.innerHTML = `
+          <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0" style="background-color: ${msg.color || '#5865F2'}">
+            ${msg.user.charAt(0).toUpperCase()}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-white text-sm hover:underline cursor-pointer">${msg.user}</span>
+              <span class="text-[10px] text-textMuted">${msg.time}</span>
+            </div>
+            <p class="text-sm text-textNormal break-words mt-0.5">${formatMessage(msg.text)}</p>
+          </div>
+        `;
+        container.appendChild(msgEl);
+      });
+
+      // Scroll to bottom
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function formatMessage(text) {
+      // Basic markdown parser
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code class="bg-dark1 px-1 rounded text-xs text-yellow-400 font-mono">$1</code>');
+    }
+
+    function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      if (!text || !currentUser) return;
+
+      const chatKey = getActiveChatKey();
+      if (!appData.messages[chatKey]) appData.messages[chatKey] = [];
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      const newMsg = {
+        id: 'msg_' + Date.now(),
+        user: currentUser.displayName,
+        username: currentUser.username,
+        tag: currentUser.tag,
+        color: currentUser.avatarColor,
+        text: text,
+        time: timeStr
+      };
+
+      appData.messages[chatKey].push(newMsg);
+      saveToStorage();
+
+      input.value = '';
+      renderMessages();
+      playChime('message');
+
+      broadcast('NEW_MESSAGE', { channelKey: chatKey });
+    }
+
+    function insertEmoji(emoji) {
+      const input = document.getElementById('messageInput');
+      input.value += ' ' + emoji + ' ';
+      input.focus();
+    }
+
+    function simulateAttachment() {
+      const input = document.getElementById('messageInput');
+      input.value += ' [Image Attachment: discord_logo.png] ';
+      input.focus();
+    }
+
+    /* ================= FRIENDS & DIRECT MESSAGES ================= */
+    function openFriendsDashboard() {
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('friendsView').classList.remove('hidden');
+      document.getElementById('headerIcon').className = "fa-solid fa-user-group text-textMuted";
+      document.getElementById('headerTitle').innerText = "Friends";
+      document.getElementById('headerDesc').innerText = "Manage your friend list & direct conversations.";
+      renderFriendsDashboard();
+    }
+
+    function renderDMList() {
+      const body = document.getElementById('sidebarBody');
+      body.innerHTML = `
+        <button onclick="openFriendsDashboard()" class="w-full flex items-center gap-3 px-3 py-2 rounded text-sm font-medium mb-2 ${document.getElementById('friendsView').classList.contains('hidden') ? 'text-textMuted hover:bg-dark4' : 'bg-dark4 text-white'}">
+          <i class="fa-solid fa-user-group"></i> Friends
+        </button>
+        <div class="text-[11px] font-bold text-textMuted uppercase px-2 mb-1 flex justify-between items-center">
+          <span>Direct Messages</span>
+        </div>
+      `;
+
+      if (!currentUser || !currentUser.friends || currentUser.friends.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = "text-xs text-textMuted px-2 italic";
+        empty.innerText = "No DMs yet. Add a friend!";
+        body.appendChild(empty);
+        return;
+      }
+
+      currentUser.friends.forEach(fUsername => {
+        const fUser = appData.users[fUsername];
+        if (!fUser) return;
+        const isActive = currentServerId === 'home' && currentChannelId === fUsername && !document.getElementById('chatView').classList.contains('hidden');
+
+        const dmBtn = document.createElement('button');
+        dmBtn.onclick = () => openDirectMessage(fUsername);
+        dmBtn.className = `w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm font-medium transition ${isActive ? 'bg-dark4 text-white' : 'text-textMuted hover:bg-dark4/50 hover:text-textNormal'}`;
+        dmBtn.innerHTML = `
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background-color: ${fUser.avatarColor}">
+            ${fUser.displayName.charAt(0).toUpperCase()}
+          </div>
+          <span class="truncate">${fUser.displayName}</span>
+        `;
+        body.appendChild(dmBtn);
+      });
+    }
+
+    function openDirectMessage(targetUsername) {
+      currentChannelId = targetUsername;
+      const targetUser = appData.users[targetUsername];
+      
+      document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('friendsView').classList.add('hidden');
+      
+      document.getElementById('headerIcon').className = "fa-solid fa-at text-textMuted text-lg";
+      document.getElementById('headerTitle').innerText = targetUser.displayName;
+      document.getElementById('headerDesc').innerText = `Direct message history with ${targetUser.displayName}${targetUser.tag}`;
+      document.getElementById('messageInput').placeholder = `Message @${targetUser.displayName}...`;
+
+      renderDMList();
+      renderMessages();
+    }
+
+    function setFriendsTab(tab) {
+      currentFriendTab = tab;
+      ['online', 'all', 'pending', 'add'].forEach(t => {
+        const el = document.getElementById(`ftab-${t}`);
+        if (t === tab) {
+          el.className = "px-2 py-1 rounded text-white bg-dark4 font-medium";
+        } else {
+          el.className = "px-2 py-1 rounded text-textMuted hover:bg-dark4 font-medium";
+        }
+      });
+      renderFriendsDashboard();
+    }
+
+    function renderFriendsDashboard() {
+      const container = document.getElementById('friendsContent');
+      container.innerHTML = '';
+
+      if (currentFriendTab === 'add') {
+        container.innerHTML = `
+          <div class="max-w-md">
+            <h3 class="text-sm font-bold text-white uppercase mb-2">Add Friend</h3>
+            <p class="text-xs text-textMuted mb-3">You can add friends with their Discord username and tag. (e.g. <code>alex#1337</code> or just <code>alex</code>)</p>
+            <div class="flex bg-[#1e1f22] p-2 rounded border border-dark4 items-center gap-2">
+              <input id="friendSearchInput" type="text" placeholder="You can add friends with their Discord Tag" class="bg-transparent text-sm text-white flex-1 focus:outline-none px-2" />
+              <button onclick="sendFriendRequest()" class="bg-brand hover:bg-brandHover text-white px-4 py-1.5 rounded text-xs font-semibold transition">Send Request</button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (currentFriendTab === 'pending') {
+        const pending = currentUser.pendingRequests || [];
+        if (pending.length === 0) {
+          container.innerHTML = `<p class="text-sm text-textMuted mt-4">There are no pending friend requests.</p>`;
+          return;
+        }
+
+        pending.forEach(fromUser => {
+          const userObj = appData.users[fromUser];
+          const row = document.createElement('div');
+          row.className = "flex items-center justify-between p-3 hover:bg-dark4 rounded border-b border-dark4";
+          row.innerHTML = `
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white" style="background:${userObj?.avatarColor || '#5865F2'}">
+                ${(userObj?.displayName || fromUser).charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-white">${userObj?.displayName || fromUser}</div>
+                <div class="text-xs text-textMuted">Incoming Friend Request</div>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="acceptFriend('${fromUser}')" class="w-8 h-8 rounded-full bg-dark1 hover:text-brandGreen text-textMuted flex items-center justify-center" title="Accept"><i class="fa-solid fa-check"></i></button>
+              <button onclick="rejectFriend('${fromUser}')" class="w-8 h-8 rounded-full bg-dark1 hover:text-brandRed text-textMuted flex items-center justify-center" title="Ignore"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+          `;
+          container.appendChild(row);
+        });
+        return;
+      }
+
+      // Online or All Friends
+      const friendList = currentUser.friends || [];
+      if (friendList.length === 0) {
+        container.innerHTML = `<div class="text-center py-10 text-textMuted text-sm">Wumpus is waiting for friends! Click "Add Friend" above to connect.</div>`;
+        return;
+      }
+
+      container.innerHTML = `<div class="text-xs font-bold text-textMuted uppercase mb-3">${currentFriendTab} — ${friendList.length}</div>`;
+
+      friendList.forEach(fUsername => {
+        const fUser = appData.users[fUsername];
+        if (!fUser) return;
+
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between p-2.5 hover:bg-dark4/60 rounded cursor-pointer border-t border-dark4/30 group";
+        row.innerHTML = `
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style="background-color: ${fUser.avatarColor}">
+                ${fUser.displayName.charAt(0).toUpperCase()}
+              </div>
+              <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-brandGreen border-2 border-dark3"></span>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-white">${fUser.displayName} <span class="text-xs text-textMuted font-normal hidden group-hover:inline">${fUser.tag}</span></div>
+              <div class="text-[11px] text-brandGreen font-medium">Online</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="openDirectMessage('${fUsername}')" class="w-8 h-8 rounded-full bg-dark1 hover:bg-dark3 flex items-center justify-center text-textMuted hover:text-white" title="Message"><i class="fa-solid fa-message"></i></button>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function sendFriendRequest() {
+      const input = document.getElementById('friendSearchInput');
+      const val = input.value.trim().toLowerCase();
+      if (!val) return;
+
+      // Extract username without tag if present
+      const targetClean = val.split('#')[0].replace(/\s+/g, '');
+
+      if (targetClean === currentUser.username) {
+        alert("You cannot add yourself!");
+        return;
+      }
+
+      if (!appData.users[targetClean]) {
+        alert("User not found! Make sure they have logged in at least once or use demo names: alex, sam.");
+        return;
+      }
+
+      const targetUser = appData.users[targetClean];
+      if (currentUser.friends && currentUser.friends.includes(targetClean)) {
+        alert("Already friends!");
+        return;
+      }
+
+      if (!targetUser.pendingRequests) targetUser.pendingRequests = [];
+      if (!targetUser.pendingRequests.includes(currentUser.username)) {
+        targetUser.pendingRequests.push(currentUser.username);
+        saveToStorage();
+        broadcast('FRIEND_UPDATE', {});
+        showToast(`Friend request sent to ${targetUser.displayName}!`);
+        input.value = '';
+      } else {
+        alert("Friend request already pending!");
+      }
+    }
+
+    function acceptFriend(friendUsername) {
+      // Mutual friendship
+      if (!currentUser.friends) currentUser.friends = [];
+      if (!currentUser.friends.includes(friendUsername)) currentUser.friends.push(friendUsername);
+
+      const other = appData.users[friendUsername];
+      if (other) {
+        if (!other.friends) other.friends = [];
+        if (!other.friends.includes(currentUser.username)) other.friends.push(currentUser.username);
+      }
+
+      // Remove from pending
+      currentUser.pendingRequests = currentUser.pendingRequests.filter(u => u !== friendUsername);
+      saveToStorage();
+      broadcast('FRIEND_UPDATE', {});
+
+      renderFriendsDashboard();
+      renderDMList();
+      showToast(`Now friends with ${other?.displayName || friendUsername}!`);
+      playChime('join');
+    }
+
+    function rejectFriend(friendUsername) {
+      currentUser.pendingRequests = currentUser.pendingRequests.filter(u => u !== friendUsername);
+      saveToStorage();
+      renderFriendsDashboard();
+    }
+
+    /* ================= MEMBERS LIST ================= */
+    function renderMembers() {
+      const listEl = document.getElementById('memberList');
+      listEl.innerHTML = '';
+
+      if (currentServerId === 'home') {
+        document.getElementById('memberSidebar').classList.add('hidden');
+        return;
+      } else {
+        document.getElementById('memberSidebar').classList.remove('hidden');
+      }
+
+      const server = appData.servers[currentServerId];
+      if (!server) return;
+
+      const members = server.members || [];
+      document.getElementById('memberCount').innerText = `MEMBERS — ${members.length}`;
+
+      members.forEach(uName => {
+        const u = appData.users[uName] || { displayName: uName, avatarColor: '#5865F2', tag: '#0000' };
+        const isOwner = server.owner === uName;
+
+        const row = document.createElement('div');
+        row.className = "flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-dark4 cursor-pointer";
+        row.innerHTML = `
+          <div class="relative">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs" style="background-color:${u.avatarColor}">
+              ${u.displayName.charAt(0).toUpperCase()}
+            </div>
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-brandGreen border-2 border-dark2"></span>
+          </div>
+          <div class="truncate flex items-center gap-1.5">
+            <span class="text-sm font-medium ${isOwner ? 'text-amber-400 font-semibold' : 'text-textNormal'} truncate">${u.displayName}</span>
+            ${isOwner ? '<i class="fa-solid fa-crown text-[10px] text-amber-400" title="Server Owner"></i>' : ''}
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+    }
+
+    function toggleMemberList() {
+      const sidebar = document.getElementById('memberSidebar');
+      sidebar.classList.toggle('hidden');
+    }
+
+    /* ================= TOAST NOTIFICATION ================= */
+    let toastTimeout;
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      document.getElementById('toastMsg').innerText = msg;
+      t.classList.remove('translate-y-20', 'opacity-0');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        t.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    /* ================= INIT ON LOAD ================= */
+    window.addEventListener('DOMContentLoaded', () => {
+      initializeStorage();
+    });
+  </script>
+</body>
+</html>
